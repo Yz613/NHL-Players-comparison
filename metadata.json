@@ -1,0 +1,5 @@
+{
+  "name": "NHL Player Comparison Tool",
+  "description": "Compare up to 4 NHL players head-to-head using advanced stats.",
+  "requestFramePermissions": []
+}
