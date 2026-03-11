@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Plus, X, BarChart3, Swords } from 'lucide-react';
 import { comparePlayers } from './lib/gemini';
@@ -6,12 +6,45 @@ import { ComparisonResult } from './types';
 import { ComparisonTable } from './components/ComparisonTable';
 import { RadarChartComponent } from './components/RadarChart';
 import { Summary } from './components/Summary';
+import { nhlPlayers } from './data/players';
 
 export default function App() {
   const [players, setPlayers] = useState<string[]>(['', '']);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<'name' | 'team'>('name');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setFocusedIndex(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const getSuggestions = (query: string) => {
+    const lowerQuery = query.toLowerCase();
+    const filtered = nhlPlayers.filter(p => 
+      !query || 
+      p.name.toLowerCase().includes(lowerQuery) || 
+      p.team.toLowerCase().includes(lowerQuery)
+    );
+    
+    return filtered.sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'team') {
+        const teamCompare = a.team.localeCompare(b.team);
+        if (teamCompare !== 0) return teamCompare;
+        return a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+  };
 
   const handleAddPlayer = () => {
     if (players.length < 4) {
@@ -88,28 +121,81 @@ export default function App() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 md:p-8 backdrop-blur-sm mb-12"
+          ref={containerRef}
         >
+          <div className="flex justify-end mb-4">
+            <div className="flex items-center gap-2 text-sm bg-slate-950/50 px-3 py-1.5 rounded-lg border border-slate-800">
+              <span className="text-slate-400">Sort suggestions by:</span>
+              <button 
+                onClick={() => setSortBy('name')} 
+                className={`transition-colors ${sortBy === 'name' ? 'text-blue-400 font-semibold' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Name
+              </button>
+              <span className="text-slate-700">|</span>
+              <button 
+                onClick={() => setSortBy('team')} 
+                className={`transition-colors ${sortBy === 'team' ? 'text-blue-400 font-semibold' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                Team
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {players.map((player, index) => (
-              <div key={index} className="relative group">
-                <input
-                  type="text"
-                  value={player}
-                  onChange={(e) => handlePlayerChange(index, e.target.value)}
-                  placeholder={`Player ${index + 1}`}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                />
-                {players.length > 2 && (
-                  <button
-                    onClick={() => handleRemovePlayer(index)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Remove player"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
+            {players.map((player, index) => {
+              const suggestions = getSuggestions(player);
+              const showSuggestions = focusedIndex === index && (player.length > 0 || suggestions.length > 0);
+
+              return (
+                <div key={index} className="relative group">
+                  <input
+                    type="text"
+                    value={player}
+                    onChange={(e) => handlePlayerChange(index, e.target.value)}
+                    onFocus={() => setFocusedIndex(index)}
+                    placeholder={`Player ${index + 1}`}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                  />
+                  {players.length > 2 && (
+                    <button
+                      onClick={() => handleRemovePlayer(index)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove player"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {showSuggestions && (
+                    <div className="absolute z-50 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                      {suggestions.length > 0 ? (
+                        <ul className="py-1">
+                          {suggestions.map((p, i) => (
+                            <li key={i}>
+                              <button
+                                onClick={() => {
+                                  handlePlayerChange(index, p.name);
+                                  setFocusedIndex(null);
+                                }}
+                                className="w-full text-left px-4 py-2 hover:bg-slate-700/50 transition-colors flex justify-between items-center group/item"
+                              >
+                                <span className="font-medium text-slate-200 group-hover/item:text-white">{p.name}</span>
+                                <span className="text-xs text-slate-400 group-hover/item:text-slate-300">{p.team}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-slate-400 text-center">
+                          No players found. You can still compare custom names!
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             
             {players.length < 4 && (
               <button
